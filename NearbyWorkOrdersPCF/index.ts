@@ -29,12 +29,18 @@ export class NearbyWorkOrders implements ComponentFramework.ReactControl<IInputs
         // Leemos el país configurado (por defecto "Otros")
         const country = context.parameters.countryEnvironment?.raw || "Otros";
 
+        // Intentamos obtener el Recurso explícito o el ID de la Reserva en la que está embebido el componente
+        const explicitResourceId = context.parameters.resourceLookup?.raw?.[0]?.id || "";
+        const currentBookingId = (context as any).page?.entityId || (context as any).mode?.contextInfo?.entityId || "";
+
         const props: INearbyWorkOrdersAppProps = {
             webAPI: context.webAPI,
             workOrderId: currentWorkOrderId,
             extraOptionSetField: extraField,
             countryEnvironment: country,
-            version: "1.0.12"
+            bookingId: currentBookingId,
+            resourceId: explicitResourceId,
+            version: "1.0.16"
         };
 
         return React.createElement(NearbyWorkOrdersApp, props);
