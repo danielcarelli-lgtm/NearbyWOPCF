@@ -30,7 +30,7 @@ export class NearbyWorkOrders implements ComponentFramework.ReactControl<IInputs
             webAPI: context.webAPI,
             workOrderId: currentWorkOrderId,
             extraOptionSetField: extraField,
-            version: "1.0.10"
+            version: "1.0.11"
         };
 
         return React.createElement(NearbyWorkOrdersApp, props);

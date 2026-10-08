@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest>
-  <control namespace="sec" constructor="NearbyWorkOrders" version="1.0.10" display-name-key="Nearby Work Orders" description-key="Muestra las 5 OTs más cercanas sin programar respecto a la OT actual" control-type="virtual" >
+  <control namespace="sec" constructor="NearbyWorkOrders" version="1.0.11" display-name-key="Nearby Work Orders" description-key="Muestra las 5 OTs más cercanas sin programar respecto a la OT actual" control-type="virtual" >
     
     <!-- Propiedad enlazada al lookup de la Orden de Trabajo en la Reserva -->
     <property name="workOrderLookup" display-name-key="Work Order" description-key="Lookup a la Orden de Trabajo de la Reserva actual" of-type="Lookup.Simple" usage="bound" required="true" />
