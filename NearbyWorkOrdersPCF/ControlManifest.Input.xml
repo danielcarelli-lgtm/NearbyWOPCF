@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest>
+  <control namespace="sec" constructor="NearbyWorkOrders" version="1.0.10" display-name-key="Nearby Work Orders" description-key="Muestra las 5 OTs más cercanas sin programar respecto a la OT actual" control-type="virtual" >
+    
+    <!-- Propiedad enlazada al lookup de la Orden de Trabajo en la Reserva -->
+    <property name="workOrderLookup" display-name-key="Work Order" description-key="Lookup a la Orden de Trabajo de la Reserva actual" of-type="Lookup.Simple" usage="bound" required="true" />
+    
+    <!-- Propiedad para definir un OptionSet adicional dinámico -->
+    <property name="extraOptionSetField" display-name-key="Campo OptionSet Adicional" description-key="Nombre lógico del campo OptionSet de la OT a mostrar (ej. msdyn_substatus). Déjalo en blanco si no lo necesitas." of-type="SingleLine.Text" usage="input" required="false" />
+
+    <resources>
+      <code path="index.ts" order="1"/>
+      <platform-library name="React" version="16.8.6" />
+      <platform-library name="Fluent" version="8.29.0" />
+    </resources>
+    
+    <feature-usage>
+      <uses-feature name="WebAPI" required="true" />
+    </feature-usage>
+  </control>
+</manifest>
