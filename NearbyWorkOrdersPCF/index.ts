@@ -40,7 +40,7 @@ export class NearbyWorkOrders implements ComponentFramework.ReactControl<IInputs
             countryEnvironment: country,
             bookingId: currentBookingId,
             resourceId: explicitResourceId,
-            version: "1.0.16"
+            version: "1.0.17"
         };
 
         return React.createElement(NearbyWorkOrdersApp, props);

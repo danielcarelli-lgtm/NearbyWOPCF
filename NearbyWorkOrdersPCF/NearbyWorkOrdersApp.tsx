@@ -47,6 +47,7 @@ interface IWorkOrder {
     timeTo: Date | null;
     expirationDate: Date | null;
     daysRemaining: number | null;
+    estimatedDuration: number;
     extraOptionSetValue?: string | null;
 }
 
@@ -92,10 +93,10 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
     const [selectedWo, setSelectedWo] = React.useState<IWorkOrder | null>(null);
     const [bookDate, setBookDate] = React.useState<string>('');
     const [bookTime, setBookTime] = React.useState<string>('');
+    const [bookDuration, setBookDuration] = React.useState<string>('120');
     const [isBooking, setIsBooking] = React.useState<boolean>(false);
 
     React.useEffect(() => {
-        // Limpiamos mensajes al cambiar entre vistas
         setSuccessMsg(null);
         loadNearbyWorkOrders();
     }, [props.workOrderId, props.extraOptionSetField, props.countryEnvironment, showWithoutGeo]);
@@ -103,7 +104,6 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
     const loadNearbyWorkOrders = async () => {
         setLoading(true);
         setError(null);
-        // NOTA: No limpiamos successMsg aquí para no borrarlo justo después de crear la reserva.
 
         if (!props.workOrderId) {
             setError("No se ha detectado una Orden de Trabajo en esta Reserva.");
@@ -134,7 +134,7 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                 return;
             }
 
-            let selectFields = `msdyn_name,msdyn_latitude,msdyn_longitude,msdyn_city,msdyn_address1,_msdyn_serviceaccount_value,_msdyn_functionallocation_value,_msdyn_workordertype_value,_msdyn_primaryincidenttype_value,_msdyn_customerasset_value,msdyn_workordersummary,msdyn_workorderid,_msdyn_priority_value,msdyn_timefrompromised,msdyn_timetopromised`;
+            let selectFields = `msdyn_name,msdyn_latitude,msdyn_longitude,msdyn_city,msdyn_address1,_msdyn_serviceaccount_value,_msdyn_functionallocation_value,_msdyn_workordertype_value,_msdyn_primaryincidenttype_value,_msdyn_customerasset_value,msdyn_workordersummary,msdyn_workorderid,_msdyn_priority_value,msdyn_timefrompromised,msdyn_timetopromised,msdyn_totalestimatedduration`;
             
             if (props.extraOptionSetField && props.extraOptionSetField.trim().length > 0) {
                 selectFields += `,${props.extraOptionSetField.trim()}`;
@@ -147,7 +147,6 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                 ? `(msdyn_latitude eq null or msdyn_longitude eq null)` 
                 : `(msdyn_latitude ne null and msdyn_longitude ne null)`;
 
-            // CORRECCIÓN: Filtramos por msdyn_systemstatus eq 690970000 (Abierta - Sin programar)
             const query = `?$select=${selectFields}&$filter=msdyn_systemstatus eq 690970000 and _msdyn_serviceterritory_value eq '${territoryId}' and _msdyn_workordertype_value eq '${typeId}' and msdyn_workorderid ne ${props.workOrderId} and ${geoFilter}`;
             
             const result = await props.webAPI.retrieveMultipleRecords("msdyn_workorder", query);
@@ -171,6 +170,7 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                 const timeFrom = entity.msdyn_timefrompromised ? new Date(entity.msdyn_timefrompromised) : null;
                 const timeTo = entity.msdyn_timetopromised ? new Date(entity.msdyn_timetopromised) : null;
                 const expirationDate = entity.pdw_mmexpirationdate ? new Date(entity.pdw_mmexpirationdate) : null;
+                const estimatedDuration = entity.msdyn_totalestimatedduration || 120; // 120 min por defecto
 
                 const targetDateString = (props.countryEnvironment === 'Espana' && entity.pdw_mmexpirationdate) 
                     ? entity.pdw_mmexpirationdate 
@@ -216,6 +216,7 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                     timeTo: timeTo,
                     expirationDate: expirationDate,
                     daysRemaining: daysRemaining,
+                    estimatedDuration: estimatedDuration,
                     extraOptionSetValue: extraValue
                 };
             });
@@ -260,6 +261,7 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
         
         setBookDate(d);
         setBookTime(t);
+        setBookDuration(wo.estimatedDuration.toString());
         setSelectedWo(wo);
         setIsModalOpen(true);
     };
@@ -271,7 +273,6 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
         setSuccessMsg(null);
 
         try {
-            // 1. Conseguir ID del Recurso
             let currentResId = props.resourceId;
             if (!currentResId) {
                 if (!props.bookingId) throw new Error("No se pudo identificar la reserva actual para heredar su recurso. Configura el parámetro Lookup del Recurso.");
@@ -280,14 +281,12 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                 if (!currentResId) throw new Error("La reserva actual no tiene un recurso asignado.");
             }
 
-            // 2. Usar el estado "Programado" fijo proporcionado
             const statusId = "f16d80d1-fd07-4237-8b69-187a11eb75f9";
 
-            // 3. Preparar las fechas (asumimos duración estándar de 2h para la reserva inicial)
             const startDateTime = new Date(`${bookDate}T${bookTime}`);
-            const endDateTime = new Date(startDateTime.getTime() + 2 * 60 * 60 * 1000); 
+            const durationMins = parseInt(bookDuration, 10) || 120;
+            const endDateTime = new Date(startDateTime.getTime() + durationMins * 60 * 1000); 
 
-            // 4. Crear el registro en Dataverse
             const bookingData = {
                 "name": `Auto-Reserva: ${selectedWo.name}`,
                 "starttime": startDateTime.toISOString(),
@@ -299,12 +298,9 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
 
             await props.webAPI.createRecord("bookableresourcebooking", bookingData);
 
-            // 5. Éxito: Cerrar modal, mostrar mensaje y ACTUALIZAR LOCALMENTE
             setIsModalOpen(false);
             setSuccessMsg(`¡Reserva creada exitosamente para la OT ${selectedWo.name}!`);
             
-            // Filtramos la OT de nuestro listado actual para que desaparezca visualmente de inmediato
-            // sin tener que esperar a que el Plugin de Dataverse actualice el msdyn_systemstatus
             setWorkOrders(prevOrders => prevOrders.filter(w => w.id !== selectedWo.id));
             
         } catch(e: any) {
@@ -544,10 +540,17 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                         onChange={(_, val) => setBookTime(val || '')} 
                         disabled={isBooking}
                     />
+                    <TextField 
+                        label="Duración estimada (minutos)" 
+                        type="number" 
+                        value={bookDuration} 
+                        onChange={(_, val) => setBookDuration(val || '')} 
+                        disabled={isBooking}
+                    />
                 </Stack>
                 <DialogFooter>
                     {isBooking && <Spinner size={SpinnerSize.small} styles={{ root: { display: 'inline-block', marginRight: '10px' } }} />}
-                    <PrimaryButton onClick={confirmBooking} text="Confirmar y Reservar" disabled={isBooking || !bookDate || !bookTime} />
+                    <PrimaryButton onClick={confirmBooking} text="Confirmar y Reservar" disabled={isBooking || !bookDate || !bookTime || !bookDuration} />
                     <DefaultButton onClick={() => setIsModalOpen(false)} text="Cancelar" disabled={isBooking} />
                 </DialogFooter>
             </Dialog>
