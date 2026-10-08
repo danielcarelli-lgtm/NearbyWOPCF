@@ -25,12 +25,16 @@ export class NearbyWorkOrders implements ComponentFramework.ReactControl<IInputs
 
         // Leemos el parámetro del campo adicional si se ha configurado
         const extraField = context.parameters.extraOptionSetField?.raw || "";
+        
+        // Leemos el país configurado (por defecto "Otros")
+        const country = context.parameters.countryEnvironment?.raw || "Otros";
 
         const props: INearbyWorkOrdersAppProps = {
             webAPI: context.webAPI,
             workOrderId: currentWorkOrderId,
             extraOptionSetField: extraField,
-            version: "1.0.11"
+            countryEnvironment: country,
+            version: "1.0.12"
         };
 
         return React.createElement(NearbyWorkOrdersApp, props);

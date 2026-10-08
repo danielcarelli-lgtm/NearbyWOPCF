@@ -16,6 +16,7 @@ export interface INearbyWorkOrdersAppProps {
     webAPI: ComponentFramework.WebApi;
     workOrderId: string;
     extraOptionSetField: string;
+    countryEnvironment: string;
     version: string;
 }
 
@@ -32,8 +33,46 @@ interface IWorkOrder {
     workOrderType: string;
     incidentType: string;
     summary: string;
+    priority: string;
+    timeFrom: Date | null;
+    timeTo: Date | null;
+    expirationDate: Date | null;
+    daysRemaining: number | null;
     extraOptionSetValue?: string | null;
 }
+
+// Función auxiliar para determinar el color de la prioridad
+const getPriorityColor = (priorityName: string) => {
+    if (!priorityName) return '#605e5c';
+    const lower = priorityName.toLowerCase();
+    if (lower.includes('alta') || lower.includes('urgente') || lower.includes('high') || lower.includes('crític')) return '#d13438'; // Rojo
+    if (lower.includes('baja') || lower.includes('low')) return '#107c10'; // Verde
+    return '#0078d4'; // Azul (Normal)
+};
+
+// Función auxiliar para determinar el estilo de los días restantes
+const getDaysRemainingInfo = (days: number | null) => {
+    if (days === null) return null;
+    let color, text, icon;
+    if (days > 7) {
+        color = '#107c10'; // Verde
+        text = `Faltan ${days} días`;
+        icon = 'Clock';
+    } else if (days > 0 && days <= 7) {
+        color = '#b47b00'; // Naranja / Amarillo oscuro
+        text = `Faltan ${days} días`;
+        icon = 'Warning';
+    } else if (days === 0) {
+        color = '#d13438'; // Rojo
+        text = 'Vence hoy';
+        icon = 'WarningSolid';
+    } else {
+        color = '#d13438'; // Rojo
+        text = `Excedido (${Math.abs(days)} d)`;
+        icon = 'ErrorBadge';
+    }
+    return { color, text, icon };
+};
 
 export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) => {
     const [workOrders, setWorkOrders] = React.useState<IWorkOrder[]>([]);
@@ -43,7 +82,7 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
 
     React.useEffect(() => {
         loadNearbyWorkOrders();
-    }, [props.workOrderId, props.extraOptionSetField, showWithoutGeo]);
+    }, [props.workOrderId, props.extraOptionSetField, props.countryEnvironment, showWithoutGeo]);
 
     const loadNearbyWorkOrders = async () => {
         setLoading(true);
@@ -66,8 +105,6 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
             const typeId = currentWo._msdyn_workordertype_value;
 
             if (!currentLat || !currentLon) {
-                // Si la OT actual no tiene geoposición y estamos buscando cercanas, mostramos error.
-                // Si estamos buscando OTs sin geoposición, permitimos seguir porque la distancia no importa.
                 if (!showWithoutGeo) {
                     setError("La Orden de Trabajo actual no tiene coordenadas de geolocalización para calcular distancias.");
                     setLoading(false);
@@ -81,14 +118,20 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                 return;
             }
 
-            // 2. Construir la consulta de las OTs según el modo (con o sin geo)
-            let selectFields = `msdyn_name,msdyn_latitude,msdyn_longitude,msdyn_city,msdyn_address1,_msdyn_serviceaccount_value,_msdyn_functionallocation_value,_msdyn_workordertype_value,_msdyn_primaryincidenttype_value,msdyn_workordersummary,msdyn_workorderid`;
+            // 2. Construir la consulta de las OTs según el modo y el país
+            let selectFields = `msdyn_name,msdyn_latitude,msdyn_longitude,msdyn_city,msdyn_address1,_msdyn_serviceaccount_value,_msdyn_functionallocation_value,_msdyn_workordertype_value,_msdyn_primaryincidenttype_value,msdyn_workordersummary,msdyn_workorderid,_msdyn_priority_value,msdyn_timefrompromised,msdyn_timetopromised`;
             
+            // Añadir campo extra si está configurado
             if (props.extraOptionSetField && props.extraOptionSetField.trim().length > 0) {
                 selectFields += `,${props.extraOptionSetField.trim()}`;
             }
 
-            // Aplicamos filtro de geoposición dependiendo del toggle
+            // Añadir campo específico de España de forma segura
+            if (props.countryEnvironment === 'Espana') {
+                selectFields += `,pdw_mmexpirationdate`;
+            }
+
+            // Filtro de geoposición dependiendo del toggle
             const geoFilter = showWithoutGeo 
                 ? `(msdyn_latitude eq null or msdyn_longitude eq null)` 
                 : `(msdyn_latitude ne null and msdyn_longitude ne null)`;
@@ -102,18 +145,38 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                 const lat = entity.msdyn_latitude;
                 const lon = entity.msdyn_longitude;
                 
-                // Solo calculamos distancia si estamos en el modo normal y hay coordenadas válidas en origen y destino
                 let distance = undefined;
                 if (!showWithoutGeo && currentLat && currentLon && lat && lon) {
                     distance = calculateDistance(currentLat, currentLon, lat, lon);
                 }
 
-                // Lookups estándar
+                // Extraer valores formateados
                 const clientName = entity["_msdyn_serviceaccount_value@OData.Community.Display.V1.FormattedValue"] || "Cliente sin especificar";
                 const funcLocName = entity["_msdyn_functionallocation_value@OData.Community.Display.V1.FormattedValue"] || "Sin ubicación funcional";
                 const woTypeName = entity["_msdyn_workordertype_value@OData.Community.Display.V1.FormattedValue"] || "Sin tipo de OT";
                 const incidentTypeName = entity["_msdyn_primaryincidenttype_value@OData.Community.Display.V1.FormattedValue"] || "Sin tipo de incidente";
+                const priorityName = entity["_msdyn_priority_value@OData.Community.Display.V1.FormattedValue"] || "Prioridad normal";
                 
+                // Procesar fechas y cálculo de ventana/caducidad
+                const timeFrom = entity.msdyn_timefrompromised ? new Date(entity.msdyn_timefrompromised) : null;
+                const timeTo = entity.msdyn_timetopromised ? new Date(entity.msdyn_timetopromised) : null;
+                const expirationDate = entity.pdw_mmexpirationdate ? new Date(entity.pdw_mmexpirationdate) : null;
+
+                const targetDateString = (props.countryEnvironment === 'Espana' && entity.pdw_mmexpirationdate) 
+                    ? entity.pdw_mmexpirationdate 
+                    : entity.msdyn_timetopromised;
+                
+                let daysRemaining = null;
+                if (targetDateString) {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0); // Descartamos la hora actual
+                    const target = new Date(targetDateString);
+                    target.setHours(0, 0, 0, 0); // Descartamos la hora objetivo
+                    
+                    const diffTime = target.getTime() - today.getTime();
+                    daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+
                 // Formatear dirección
                 const address1 = entity.msdyn_address1 || "";
                 const city = entity.msdyn_city || "";
@@ -138,16 +201,19 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                     workOrderType: woTypeName,
                     incidentType: incidentTypeName,
                     summary: entity.msdyn_workordersummary || "",
+                    priority: priorityName,
+                    timeFrom: timeFrom,
+                    timeTo: timeTo,
+                    expirationDate: expirationDate,
+                    daysRemaining: daysRemaining,
                     extraOptionSetValue: extraValue
                 };
             });
 
             // 4. Ordenar resultados
             if (!showWithoutGeo) {
-                // Ordenar por cercanía si estamos viendo las geoposicionadas
                 fetchedOrders.sort((a, b) => (a.distance || 0) - (b.distance || 0));
             } else {
-                // Ordenar por nombre si estamos viendo las que no tienen geoposición
                 fetchedOrders.sort((a, b) => a.name.localeCompare(b.name));
             }
             
@@ -165,11 +231,23 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
         window.open(`https://maps.google.com/?q=${lat},${lon}`, '_blank');
     };
 
+    const renderDateWindow = (wo: IWorkOrder) => {
+        if (props.countryEnvironment === 'Espana' && wo.expirationDate) {
+            return `Vencimiento: ${wo.expirationDate.toLocaleDateString()}`;
+        } else if (wo.timeFrom && wo.timeTo) {
+            return `Ventana: ${wo.timeFrom.toLocaleDateString()} - ${wo.timeTo.toLocaleDateString()}`;
+        } else if (wo.timeTo) {
+            return `Límite: ${wo.timeTo.toLocaleDateString()}`;
+        } else if (wo.timeFrom) {
+            return `Inicio: ${wo.timeFrom.toLocaleDateString()}`;
+        }
+        return "Sin límite temporal";
+    };
+
     if (loading) return <Spinner size={SpinnerSize.large} label={showWithoutGeo ? "Buscando OTs sin ubicación..." : "Buscando OTs cercanas..."} />;
     
     if (error) return <MessageBar messageBarType={MessageBarType.error}>{error}</MessageBar>;
 
-    // Definimos la cabecera que se renderiza siempre (haya resultados o no) para permitir alternar
     const headerBlock = (
         <Stack horizontal horizontalAlign="space-between" verticalAlign="center">
             <Text variant="large" styles={{ root: { fontWeight: 'bold' } }}>
@@ -200,17 +278,27 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                         : "No hay órdenes pendientes cercanas para este territorio y tipo."}
                 </MessageBar>
             ) : (
-                workOrders.map(wo => (
+                workOrders.map(wo => {
+                    const daysInfo = getDaysRemainingInfo(wo.daysRemaining);
+                    return (
                     <div key={wo.id} style={{ padding: '12px', border: '1px solid #edebe9', borderRadius: '4px', backgroundColor: '#ffffff', boxShadow: '0 1.6px 3.6px 0 rgba(0,0,0,0.132)' }}>
                         <Stack horizontal horizontalAlign="space-between" verticalAlign="start">
                             
                             {/* Bloque Izquierdo: Información */}
-                            <Stack tokens={{ childrenGap: 6 }} styles={{ root: { width: showWithoutGeo ? '100%' : '80%' } }}>
+                            <Stack tokens={{ childrenGap: 6 }} styles={{ root: { width: showWithoutGeo ? '100%' : '75%' } }}>
                                 
-                                {/* Título de la OT */}
-                                <Text variant="mediumPlus" styles={{ root: { fontWeight: 'bold', color: '#0078d4' } }}>
-                                    {wo.name}
-                                </Text>
+                                {/* Cabecera de la OT: Título y Prioridad */}
+                                <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 10 }} wrap>
+                                    <Text variant="mediumPlus" styles={{ root: { fontWeight: 'bold', color: '#0078d4' } }}>
+                                        {wo.name}
+                                    </Text>
+                                    <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 4 }}>
+                                        <Icon iconName="Flag" styles={{ root: { color: getPriorityColor(wo.priority), fontSize: '12px' } }} />
+                                        <Text variant="small" styles={{ root: { color: getPriorityColor(wo.priority), fontWeight: '600' } }}>
+                                            {wo.priority}
+                                        </Text>
+                                    </Stack>
+                                </Stack>
                                 
                                 {/* Tipos: OT e Incidente */}
                                 <Stack horizontal wrap tokens={{ childrenGap: 10 }}>
@@ -226,6 +314,25 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                                             {wo.incidentType}
                                         </Text>
                                     </Stack>
+                                </Stack>
+
+                                {/* Fechas y SLA */}
+                                <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 10 }} wrap>
+                                    <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 4 }}>
+                                        <Icon iconName="Calendar" styles={{ root: { color: '#605e5c', fontSize: '12px' } }} />
+                                        <Text variant="small" styles={{ root: { color: '#605e5c' } }}>
+                                            {renderDateWindow(wo)}
+                                        </Text>
+                                    </Stack>
+                                    
+                                    {daysInfo && (
+                                        <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 4 }} styles={{ root: { backgroundColor: `${daysInfo.color}1A`, padding: '2px 6px', borderRadius: '4px' }}}>
+                                            <Icon iconName={daysInfo.icon} styles={{ root: { color: daysInfo.color, fontSize: '12px' } }} />
+                                            <Text variant="small" styles={{ root: { color: daysInfo.color, fontWeight: 'bold' } }}>
+                                                {daysInfo.text}
+                                            </Text>
+                                        </Stack>
+                                    )}
                                 </Stack>
 
                                 {/* Cliente y Ubicación */}
@@ -281,9 +388,9 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                                 )}
                             </Stack>
 
-                            {/* Bloque Derecho: Distancia y Acciones (Solo visible si hay geoposición) */}
+                            {/* Bloque Derecho: Distancia y Acciones */}
                             {!showWithoutGeo && (
-                                <Stack tokens={{ childrenGap: 8 }} horizontalAlign="end" verticalAlign="start">
+                                <Stack tokens={{ childrenGap: 8 }} horizontalAlign="end" verticalAlign="start" styles={{ root: { width: '25%' } }}>
                                     <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 5 }}>
                                         <Icon iconName="Nav2DMapView" styles={{ root: { color: '#107c10', fontSize: '16px' } }} />
                                         <Text variant="medium" styles={{ root: { fontWeight: 'bold', color: '#107c10' } }}>
@@ -297,7 +404,7 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
                                         ariaLabel="Abrir ubicación en Mapas" 
                                         onClick={() => openInMaps(wo.latitude, wo.longitude)}
                                         styles={{
-                                            root: { backgroundColor: '#f3f2f1', borderRadius: '50%' },
+                                            root: { backgroundColor: '#f3f2f1', borderRadius: '50%', alignSelf: 'flex-end' },
                                             rootHovered: { backgroundColor: '#e1dfdd' },
                                             icon: { color: '#0078d4', fontSize: '16px' }
                                         }}
@@ -307,10 +414,9 @@ export const NearbyWorkOrdersApp: React.FC<INearbyWorkOrdersAppProps> = (props) 
 
                         </Stack>
                     </div>
-                ))
+                )})
             )}
 
-            {/* Número de versión */}
             <Text styles={{ root: { color: '#a19f9d', fontSize: '10px', textAlign: 'center', marginTop: '8px' } }}>
                 v{props.version}
             </Text>

@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest>
-  <control namespace="sec" constructor="NearbyWorkOrders" version="1.0.11" display-name-key="Nearby Work Orders" description-key="Muestra las 5 OTs más cercanas sin programar respecto a la OT actual" control-type="virtual" >
+  <control namespace="sec" constructor="NearbyWorkOrders" version="1.0.12" display-name-key="Nearby Work Orders" description-key="Muestra las 5 OTs más cercanas sin programar respecto a la OT actual" control-type="virtual" >
     
     <!-- Propiedad enlazada al lookup de la Orden de Trabajo en la Reserva -->
     <property name="workOrderLookup" display-name-key="Work Order" description-key="Lookup a la Orden de Trabajo de la Reserva actual" of-type="Lookup.Simple" usage="bound" required="true" />
     
+    <!-- Propiedad para definir el entorno del país y habilitar campos exclusivos -->
+    <property name="countryEnvironment" display-name-key="Entorno de País" description-key="Determina si el entorno es España u Otros para la lógica de fechas (pdw_mmexpirationdate)." of-type="Enum" usage="input" required="true" default-value="Otros">
+      <value name="Espana" display-name-key="España">Espana</value>
+      <value name="Otros" display-name-key="Otros">Otros</value>
+    </property>
+
     <!-- Propiedad para definir un OptionSet adicional dinámico -->
     <property name="extraOptionSetField" display-name-key="Campo OptionSet Adicional" description-key="Nombre lógico del campo OptionSet de la OT a mostrar (ej. msdyn_substatus). Déjalo en blanco si no lo necesitas." of-type="SingleLine.Text" usage="input" required="false" />
 
